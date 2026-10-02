@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E90FF"/>
+      <stop offset="1" stop-color="#0058D6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- マンション -->
+  <rect x="232" y="150" width="420" height="724" rx="44" fill="#FFFFFF"/>
+  <g fill="#0A6BE8">
+    <rect x="290" y="226" width="80" height="78" rx="14"/><rect x="402" y="226" width="80" height="78" rx="14"/><rect x="514" y="226" width="80" height="78" rx="14"/>
+    <rect x="290" y="346" width="80" height="78" rx="14"/><rect x="402" y="346" width="80" height="78" rx="14"/><rect x="514" y="346" width="80" height="78" rx="14"/>
+    <rect x="290" y="466" width="80" height="78" rx="14"/><rect x="402" y="466" width="80" height="78" rx="14"/>
+    <rect x="290" y="586" width="80" height="78" rx="14"/>
+    <rect x="290" y="720" width="96" height="154" rx="14"/>
+  </g>
+  <!-- 黄色シール + チェック -->
+  <g transform="rotate(-8 700 700)">
+    <rect x="530" y="530" width="340" height="340" rx="56" fill="#FFF100" stroke="#111111" stroke-width="16"/>
+    <path d="M612 706 L680 774 L800 640" fill="none" stroke="#111111" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
