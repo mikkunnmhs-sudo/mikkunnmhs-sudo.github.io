@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="配達電話">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="icon" type="image/png" href="./icon-192.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<title>配達電話フロー</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+
+/* Layout: iOS-style navigation stack. Large title, "you say" bubble, inset grouped list of customer replies. */
+:root{
+  --bg:#f2f2f7; --cell:#ffffff; --label:#000000; --sec:#6c6c70; --sep:rgba(60,60,67,.18);
+  --tint:#007aff; --tint-on:#ffffff; --green:#34c759; --orange:#ff9500; --red:#ff3b30; --indigo:#5856d6; --teal:#30b0c7; --fill:rgba(118,118,128,.12);
+  --bar:rgba(249,249,249,.86);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  --fs:1.12rem;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#000000; --cell:#1c1c1e; --label:#ffffff; --sec:#98989f; --sep:rgba(84,84,88,.6);
+  --tint:#0a84ff; --tint-on:#ffffff; --green:#30d158; --orange:#ff9f0a; --red:#ff453a; --indigo:#5e5ce6; --teal:#40c8e0; --fill:rgba(118,118,128,.24);
+  --bar:rgba(22,22,24,.82); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#000000; --cell:#1c1c1e; --label:#ffffff; --sec:#98989f; --sep:rgba(84,84,88,.6);
+  --tint:#0a84ff; --tint-on:#ffffff; --green:#30d158; --orange:#ff9f0a; --red:#ff453a; --indigo:#5e5ce6; --teal:#40c8e0; --fill:rgba(118,118,128,.24);
+  --bar:rgba(22,22,24,.82); color-scheme:dark}
+html,body{background:var(--bg)}
+body{color:var(--label);font-family:var(--font);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bar)}
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--sep)}
+.nav .in{max-width:640px;margin:0 auto;padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px));padding-block:0;height:44px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+.nb{font:400 17px var(--font);color:var(--tint);background:none;border:0;padding:8px;display:flex;align-items:center;gap:2px;cursor:pointer}
+.nb:disabled{opacity:.3}
+.nb.r{justify-self:end}
+.nt{font-weight:600;font-size:17px;display:flex;align-items:center;gap:6px}
+.chip{font-size:12px;font-weight:600;color:#fff;border-radius:999px;padding:2px 8px}
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px 40px;display:flex;flex-direction:column;gap:22px}
+.lt{font-size:2rem;font-weight:700;letter-spacing:-.01em;margin:6px 0 0;text-wrap:balance;line-height:1.2}
+.crumb{font-size:13px;color:var(--sec);margin-top:2px;min-width:0;overflow-wrap:anywhere}
+.sec-h{font-size:13px;color:var(--sec);margin:0 0 6px 16px;letter-spacing:.01em}
+.bubble{background:var(--tint);color:var(--tint-on);border-radius:20px 20px 6px 20px;padding:14px 16px;font-size:var(--fs);line-height:1.7;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.bubble p{margin:0}
+.bubble p+p{margin-top:.6em}
+.bubble.end{background:var(--green)}
+.hint{display:flex;gap:10px;background:var(--cell);border-radius:12px;padding:12px 14px;font-size:14px;color:var(--sec);line-height:1.55}
+.hint b{color:var(--orange);font-weight:600;white-space:nowrap}
+.list{background:var(--cell);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;padding:0 0 0 16px;min-height:52px;text-align:left;font:400 17px var(--font);color:var(--label);cursor:pointer}
+.row .t{flex:1;padding:13px 0;border-bottom:.5px solid var(--sep);display:flex;align-items:center;gap:8px;min-width:0}
+.row:last-child .t{border-bottom:0}
+.row .tx{flex:1;min-width:0}
+.row .tx small{display:block;color:var(--sec);font-size:13px;margin-top:1px}
+.row .chev{color:var(--sec);opacity:.6;padding-right:14px;font-size:18px}
+.row:active{background:var(--fill)}
+.row:focus-visible,.nb:focus-visible,.seg button:focus-visible{outline:2px solid var(--tint);outline-offset:-2px}
+.ic{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:15px;font-weight:700;flex:none}
+.foot{font-size:12px;color:var(--sec);margin:0 16px;line-height:1.6}
+.seg{display:flex;background:var(--fill);border-radius:9px;padding:2px;align-self:center}
+.seg button{font:500 13px var(--font);border:0;background:none;color:var(--label);padding:6px 14px;border-radius:7px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--cell);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+@media (prefers-reduced-motion:no-preference){.page{animation:push .22s cubic-bezier(.2,.8,.2,1)}@keyframes push{from{transform:translateX(18px)}to{transform:none}}}
+</style>
+</head>
+<body>
+<div class="nav"><div class="in">
+  <button class="nb" id="back" type="button" aria-label="戻る"><span style="font-size:22px;line-height:1">‹</span>戻る</button>
+  <span class="nt" id="navt">配達電話</span>
+  <button class="nb r" id="home" type="button">最初から</button>
+</div></div>
+
+<main class="wrap page" id="app" aria-live="polite"></main>
+
+<script>
+const C={y:["var(--green)","✓"],n:["var(--red)","✕"],q:["var(--orange)","?"],p:["var(--tint)","→"],m:["#8e8e93","…"],
+  home:["var(--tint)","家"],office:["var(--indigo)","社"],shop:["var(--teal)","店"]};
+const KIND={home:"自宅",office:"会社",shop:"お店"};
+/* say/hint/title/opts can be a plain value or {home,office,shop} */
+const N={
+ start:{title:"配達先は？",
+  hint:"電話をかける前に、配達先の種類を選んでください。",
+  opts:[["自宅・マンション","home","call","home"],["会社・オフィス","office","call","office"],["お店","shop","call","shop"]]},
+ call:{title:"電話をかける",
+  say:{home:["お世話になっております。Amazonのお荷物の配達の者です。","〇〇様のお電話でよろしいでしょうか？"],
+       office:["お世話になっております。Amazonのお荷物の配達の者です。","〇〇（会社名）様でしょうか？〇〇様宛てのお荷物をお届けに伺っております。"],
+       shop:["お世話になっております。Amazonのお荷物の配達の者です。","〇〇（店名）様でしょうか？"]},
+  hint:{home:"最初はゆっくり、名乗りをはっきり。",office:"会社は電話に出た人と宛名の人が違うことが多い。宛名をはっきり伝える。",shop:"お店は営業中で忙しいことが多い。手短に。"},
+  opts:[["はい、そうです","y","ask"],["違います（番号違い）","n","wrong"],["出ない・留守電","m","vm"]]},
+ ask:{title:{home:"いま家にいる？",office:"受け取れる人はいる？",shop:"お店に人はいる？"},
+  say:{home:["ただいまお荷物をお届けに伺ったのですが、今ご自宅にいらっしゃいますか？"],
+       office:["ただいま会社の前まで伺ったのですが、どなたかに受け取っていただくことはできますか？"],
+       shop:["ただいまお店の前まで伺ったのですが、どなたかいらっしゃいますか？"]},
+  hint:{home:"「ご在宅ですか？」より柔らかく伝わります。",office:"本人でなくても、受付や同僚が受け取れることが多い。",shop:"開店前・休憩中・夜営業など事情がさまざま。"},
+  opts:{home:[["いるよ","y","home_yes"],["いない","n","away"],["すぐ戻る","q","soon"]],
+        office:[["受付・他の人が受け取る","y","office_recv"],["本人が取りに行く","y","office_self"],["今日は誰もいない","n","away"],["今日は休み","n","closed"]],
+        shop:[["いるよ","y","shop_yes"],["開店前・今はいない","n","away"],["すぐ戻る","q","soon"],["夜しか開いていない","q","night"],["今日は定休日","n","closed"]]}},
+ home_yes:{title:"家にいた",say:["失礼しました！これからもう一度インターホンを押しますので、出ていただけますか？"],
+  hint:"インターホンの故障や聞こえなかったケースが多いです。",
+  opts:[["わかった","y","end_ok"],["インターホン壊れてる","q","bell"],["今は出られない","n","cant"]]},
+ office_recv:{title:"受付で受け取り",say:["ありがとうございます。受付（〇〇階）にお持ちすればよろしいですか？","受け取っていただく方のお名前を伺ってもよろしいでしょうか？"],
+  hint:"受け取った人の名前をメモ。ビルの入館ルールにも従う。",
+  opts:[["わかった","y","end_ok"],["受付はない","q","office_self"]]},
+ office_self:{title:"取りに来てくれる",say:["ありがとうございます。では〇〇（入口・ロビーなど）でお待ちしていますね。"],
+  opts:[["OK","y","end_ok"]]},
+ shop_yes:{title:"お店にいた",say:["失礼しました！これからお店に伺いますので、受け取っていただけますか？"],
+  opts:[["わかった","y","end_ok"],["今は手が離せない","n","cant"]]},
+ bell:{title:"インターホンが鳴らない",say:["承知しました。では、ドアの前に着いたらこのお電話か、ノックでお知らせしますね。"],
+  opts:[["OK","y","end_ok"]]},
+ cant:{title:"今は出られない",
+  say:{home:["承知しました。玄関の前などに置かせていただいてもよろしいですか？"],
+       shop:["お忙しいところすみません。レジ横や入口の前など、置かせていただいてよい場所はありますか？"]},
+  opts:[["置いていいよ","y","place"],["置かないで","n","no_okihai"]]},
+ soon:{title:"すぐ戻る",say:["ありがとうございます。何分くらいで戻られそうですか？"],
+  hint:"待てるかはルートと会社のルール次第。約束はしない言い方で。",
+  opts:[["数分で戻る","y","soon_short"],["しばらく戻れない","n","away"]]},
+ soon_short:{title:"数分で戻る",say:["近くを回っていますので、このあともう一度伺えるか試してみますね。","ただ、お約束はできないので、もし置いてよい場所があれば置き配にもできますが、いかがですか？"],
+  opts:[["置いていいよ","y","place"],["待ってて","q","end_try"],["置かないで","n","no_okihai"]]},
+ closed:{title:{office:"今日は休み",shop:"今日は定休日"},
+  say:{office:["本日はお休みなんですね、承知しました。","置いてよい場所があれば置き配にもできますが、いかがでしょうか？"],
+       shop:["本日は定休日なんですね、承知しました。","入口の前や郵便受けなど、置いてよい場所があれば置き配にもできますが、いかがでしょうか？"]},
+  hint:"会社・お店宛ては次回も同じことが起きやすい。営業日に受け取れるよう案内する。",
+  opts:[["置いていいよ","y","place"],["置かないで","n","no_okihai"]]},
+ away:{title:"不在だった",
+  say:{home:["承知しました。玄関の前や宅配ボックスなどに置かせていただくこともできますが、いかがでしょうか？"],
+       office:["承知しました。入口の前や郵便受け、ビルの宅配ボックスなどに置かせていただくこともできますが、いかがでしょうか？"],
+       shop:["承知しました。お店の入口の前や郵便受けなどに置かせていただくこともできますが、いかがでしょうか？"]},
+  opts:{home:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["夜に持ってきて","q","night"],["◯時に来て","q","time"]],
+        office:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["◯時に来て","q","time"]],
+        shop:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["夜しか開いていない","q","night"],["◯時に来て","q","time"]]}},
+ place:{title:"置き場所を確認",
+  say:{home:["ありがとうございます。どちらに置けばよろしいですか？玄関前、宅配ボックス、メーターボックスなどでも大丈夫です。"],
+       office:["ありがとうございます。どちらに置けばよろしいですか？入口の前、郵便受け、ビルの宅配ボックスなどでも大丈夫です。"],
+       shop:["ありがとうございます。どちらに置けばよろしいですか？入口の前、シャッターの横、郵便受けなどでも大丈夫です。"]},
+  hint:{home:"置いたら写真を撮って登録。場所は復唱して確認。",
+        office:"ビルによっては共用部に置けない場合あり。管理ルールを優先。写真を撮って登録。",
+        shop:"雨に濡れない場所か、通る人の目につきにくいかも確認。写真を撮って登録。"},
+  opts:[["場所を聞いた","y","end_okihai"]]},
+ no_okihai:{title:"置き配はイヤ",
+  say:{home:["承知しました。では今回は持ち帰らせていただきます。","次のお届けは、Amazonの注文履歴から日にちを選んでいただけます。","時間を気にせず受け取りたい場合は、ロッカーやコンビニ受け取りも便利ですよ。"],
+       office:["承知しました。では今回は持ち帰らせていただきます。","次のお届けは、Amazonの注文履歴から、会社にいらっしゃる日を選んでいただけます。","会社で受け取りにくい場合は、ご自宅宛てやロッカー受け取りに変えていただく方法もあります。"],
+       shop:["承知しました。では今回は持ち帰らせていただきます。","次のお届けは、Amazonの注文履歴から、お店が開いている日を選んでいただけます。","お店で受け取りにくい場合は、ご自宅宛てやロッカー受け取りに変えていただく方法もあります。"]},
+  opts:{home:[["わかった","y","end_back"],["夜に持ってきて","q","night"],["怒っている","n","angry"]],
+        office:[["わかった","y","end_back"],["◯時に来て","q","time"],["怒っている","n","angry"]],
+        shop:[["わかった","y","end_back"],["夜しか開いていない","q","night"],["怒っている","n","angry"]]}},
+ night:{title:{home:"夜に持ってきて",office:"夜に持ってきて",shop:"夜しか開いていない"},
+  say:{home:["夜しかいらっしゃらないんですね、承知しました。","申し訳ないのですが、今Amazonの仕組みで夜の時間指定自体がなくなってしまっていて、私の方でも時間を選べないんです。","置き配か、ロッカー・コンビニ受け取りにしていただくと、確実にお受け取りいただけます。"],
+       office:["夜しかいらっしゃらないんですね、承知しました。","申し訳ないのですが、今Amazonの仕組みで夜の時間指定自体がなくなってしまっていて、私の方でも時間を選べないんです。","置き配か、ご自宅宛て・ロッカー受け取りに変えていただくと、確実にお受け取りいただけます。"],
+       shop:["夜の営業なんですね、承知しました。","申し訳ないのですが、今Amazonの仕組みで夜の時間指定自体がなくなってしまっていて、私の方でも時間を選べないんです。","お店の前や郵便受けへの置き配か、ご自宅宛て・ロッカー受け取りに変えていただくと、確実にお受け取りいただけます。"]},
+  hint:"「できかねます」で終わらせず、代わりの方法で締める。",
+  opts:[["置き配にする","y","place"],["今回は持ち帰りで","p","end_back"],["納得していない","n","angry"]]},
+ time:{title:"◯時に来て",say:["◯時ごろですね、承知しました。","申し訳ありません、今は私の方で時間のお約束ができない仕組みになっています。","時間を気にせず受け取るなら、置き配が一番確実です。"],
+  opts:[["置き配にする","y","place"],["今回は持ち帰りで","p","end_back"],["納得していない","n","angry"]]},
+ angry:{title:"怒っている",say:["ご不便をおかけして、本当に申し訳ありません。","お気持ちはよく分かります。私の方でできることが限られていて、もどかしい思いをさせてしまっています。","ご意見はAmazonのカスタマーサービスにお伝えいただくと、改善につながります。"],
+  hint:"言い返さない。長引く・脅される場合は無理せずリーダーに連絡。",
+  opts:[["落ち着いた","y","away"],["持ち帰りでいい","p","end_back"]]},
+ wrong:{title:"番号違い",say:["大変失礼いたしました。お手数をおかけしました。失礼いたします。"],end:true},
+ vm:{title:"留守電",
+  say:{home:["Amazonのお荷物の配達です。","ただいまお届けに伺いましたが、ご不在でしたので持ち帰ります。","次回のお届けは、Amazonの注文履歴から日にちを選んでいただけます。失礼いたします。"],
+       office:["Amazonのお荷物の配達です。〇〇様宛てのお荷物をお届けに伺いましたが、お受け取りいただけなかったため持ち帰ります。","次回のお届けは、Amazonの注文履歴から日にちを選んでいただけます。失礼いたします。"],
+       shop:["Amazonのお荷物の配達です。お店にお届けに伺いましたが、お受け取りいただけなかったため持ち帰ります。","次回のお届けは、Amazonの注文履歴から日にちを選んでいただけます。失礼いたします。"]},
+  hint:"15秒以内・ゆっくり。",end:true},
+ end_ok:{title:"お届けへ",say:["ありがとうございます。すぐに伺います。失礼いたします。"],end:true},
+ end_try:{title:"もう一度伺う",say:["承知しました。もう一度伺えるよう回ってみます。伺えなかった場合は持ち帰りになりますので、ご了承ください。失礼いたします。"],end:true},
+ end_okihai:{title:"置き配で完了",say:["〇〇に置かせていただきますね。ありがとうございました。失礼いたします。"],end:true},
+ end_back:{title:"持ち帰り",say:["ご協力ありがとうございます。今回は持ち帰らせていただきます。失礼いたします。"],end:true}
+};
+let stack=[{id:"start"}], kind=null, fs=1.12;
+try{const v=localStorage.getItem("flow_fs");if(v)fs=+v}catch(e){}
+const app=document.getElementById("app");
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function pick(v){if(v==null)return null;if(Array.isArray(v)||typeof v==="string")return v;return v[kind]||v.home||v.shop||v.office}
+function render(){
+  const top=stack[stack.length-1]; kind=null;
+  for(const s of stack){if(s.kind)kind=s.kind}
+  const n=N[top.id], say=pick(n.say), hint=pick(n.hint), opts=pick(n.opts), title=pick(n.title);
+  document.documentElement.style.setProperty("--fs",fs+"rem");
+  document.getElementById("navt").innerHTML='配達電話'+(kind?'<span class="chip" style="background:'+C[kind][0]+'">'+KIND[kind]+'</span>':'');
+  let h='<div><h1 class="lt">'+esc(title)+'</h1>';
+  if(stack.length>1)h+='<div class="crumb">'+stack.slice(1,-1).map(s=>esc(pick(N[s.id].title))).join(" › ")+'</div>';
+  h+='</div>';
+  if(say)h+='<div><p class="sec-h">あなたが言う</p><div class="bubble'+(n.end?" end":"")+'">'+say.map(s=>"<p>"+esc(s)+"</p>").join("")+'</div></div>';
+  if(hint)h+='<div class="hint"><b>ポイント</b><span>'+esc(hint)+'</span></div>';
+  if(opts){
+    h+='<div><p class="sec-h">'+(top.id==="start"?"配達先":"お客様の返事")+'</p><div class="list">'+opts.map((o,i)=>'<button class="row" type="button" data-i="'+i+'"><span class="ic" style="background:'+C[o[1]][0]+'">'+C[o[1]][1]+'</span><span class="t"><span class="tx">'+esc(o[0])+'</span><span class="chev">›</span></span></button>').join("")+'</div></div>';
+  }else{
+    h+='<div class="list"><button class="row" type="button" id="again"><span class="ic" style="background:var(--tint)">↺</span><span class="t"><span class="tx">次の電話へ（最初から）</span><span class="chev">›</span></span></button></div>';
+  }
+  h+='<div class="seg" role="group" aria-label="文字サイズ"><button type="button" data-f="1" aria-pressed="'+(fs<1.1)+'">小</button><button type="button" data-f="1.12" aria-pressed="'+(fs>=1.1&&fs<1.3)+'">標準</button><button type="button" data-f="1.35" aria-pressed="'+(fs>=1.3)+'">大</button></div>';
+  h+='<p class="foot">※Amazonの配達ルール（時間指定・再配達・置き配）は変わることがあります。所属の配送会社やビルのルールが優先です。2026年10月時点。</p>';
+  app.innerHTML=h;
+  app.classList.remove("page");void app.offsetWidth;app.classList.add("page");
+  app.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>{const o=opts[+b.dataset.i];stack.push(o[3]?{id:o[2],kind:o[3]}:{id:o[2]});render();window.scrollTo(0,0)});
+  const a=document.getElementById("again");if(a)a.onclick=reset;
+  app.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{fs=+b.dataset.f;try{localStorage.setItem("flow_fs",fs)}catch(e){}render()});
+  document.getElementById("back").disabled=stack.length<2;
+}
+function reset(){stack=[{id:"start"}];render();window.scrollTo(0,0)}
+document.getElementById("back").onclick=()=>{if(stack.length>1){stack.pop();render();window.scrollTo(0,0)}};
+document.getElementById("home").onclick=reset;
+render();
+</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}</script>
+</body>
+</html>
