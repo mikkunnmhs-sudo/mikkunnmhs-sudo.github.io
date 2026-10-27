@@ -70,6 +70,13 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .seg button{font:500 13px var(--font);border:0;background:none;color:var(--label);padding:6px 14px;border-radius:7px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--cell);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 @media (prefers-reduced-motion:no-preference){.page{animation:push .22s cubic-bezier(.2,.8,.2,1)}@keyframes push{from{transform:translateX(18px)}to{transform:none}}}
+.search input{width:100%;font:400 17px var(--font);padding:10px 14px;border-radius:10px;border:0;background:var(--fill);color:var(--label);-webkit-appearance:none;appearance:none}
+.search input:focus{outline:2px solid var(--tint)}
+details.more{background:none}
+details.more summary{list-style:none;cursor:pointer;font-size:15px;color:var(--tint);padding:4px 16px 10px;font-weight:500}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"＋ "}
+details.more[open] summary::before{content:"− "}
 </style>
 </head>
 <body>
@@ -82,106 +89,243 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 <main class="wrap page" id="app" aria-live="polite"></main>
 
 <script>
+/* ===== アイコン ===== */
 const C={y:["var(--green)","✓"],n:["var(--red)","✕"],q:["var(--orange)","?"],p:["var(--tint)","→"],m:["#8e8e93","…"],
-  home:["var(--tint)","家"],office:["var(--indigo)","社"],shop:["var(--teal)","店"]};
-const KIND={home:"自宅",office:"会社",shop:"お店"};
-/* say/hint/title/opts can be a plain value or {home,office,shop} */
+  home:["var(--tint)","家"],apt:["#af52de","マ"],office:["var(--indigo)","社"],shop:["var(--teal)","店"],in:["var(--green)","☎"]};
+const KIND={home:"戸建て",apt:"マンション",office:"会社",shop:"お店"};
+/* 値は そのまま or {home,apt,office,shop}（無い種類は home → apt の順で代用） */
 const N={
+/* ---------- スタート ---------- */
  start:{title:"配達先は？",
-  hint:"電話をかける前に、配達先の種類を選んでください。",
-  opts:[["自宅・マンション","home","call","home"],["会社・オフィス","office","call","office"],["お店","shop","call","shop"]]},
+  hint:"電話の前に：宛名・住所・部屋番号を確認。周りがうるさくない場所でかける。",
+  opts:[["戸建て（一軒家）","home","call","home"],["マンション・アパート","apt","call","apt"],["会社・オフィス","office","call","office"],["お店","shop","call","shop"],["お客様から電話がかかってきた","in","incoming","home"]]},
+
+/* ---------- 電話をかける ---------- */
  call:{title:"電話をかける",
   say:{home:["お世話になっております。Amazonのお荷物の配達の者です。","〇〇様のお電話でよろしいでしょうか？"],
        office:["お世話になっております。Amazonのお荷物の配達の者です。","〇〇（会社名）様でしょうか？〇〇様宛てのお荷物をお届けに伺っております。"],
        shop:["お世話になっております。Amazonのお荷物の配達の者です。","〇〇（店名）様でしょうか？"]},
-  hint:{home:"最初はゆっくり、名乗りをはっきり。",office:"会社は電話に出た人と宛名の人が違うことが多い。宛名をはっきり伝える。",shop:"お店は営業中で忙しいことが多い。手短に。"},
-  opts:[["はい、そうです","y","ask"],["違います（番号違い）","n","wrong"],["出ない・留守電","m","vm"]]},
- ask:{title:{home:"いま家にいる？",office:"受け取れる人はいる？",shop:"お店に人はいる？"},
+  hint:{home:"最初はゆっくり、名乗りをはっきり。",office:"出た人と宛名の人が違うことが多い。宛名をはっきり伝える。",shop:"お店は忙しいことが多い。手短に。"},
+  opts:[["はい、そうです","y","ask"],["本人じゃない（家族・従業員）","p","other_person"],["違います（番号違い）","n","wrong"],["出ない・留守電","m","vm"],["誰？詐欺？と疑われた","q","scam"],["話し中・すぐ切られた","m","hangup"]]},
+
+ other_person:{title:{home:"家族が出た",apt:"家族が出た",office:"別の人が出た",shop:"店員さんが出た"},
+  say:{home:["〇〇様宛てのお荷物をお届けに伺ったのですが、代わりにお受け取りいただくことはできますか？"],
+       office:["〇〇様宛てのお荷物なのですが、代わりにお受け取りいただくことはできますか？受付やご担当の方でも大丈夫です。"],
+       shop:["〇〇様（〇〇店）宛てのお荷物なのですが、お店で代わりにお受け取りいただくことはできますか？"]},
+  hint:"同じ住所の人なら受け取ってもらえることが多い。受け取った人の名前をメモ。",
+  opts:{home:[["受け取れる","y","home_yes"],["本人は不在・誰もいない","n","away"],["本人に聞いてみる","q","check_later"]],
+        office:[["受け取れる","y","office_recv"],["その人はもういない（退職など）","n","office_gone"],["部署が違う","q","office_dept"],["本人に聞いてみる","q","check_later"]],
+        shop:[["受け取れる","y","shop_yes"],["店長がいないと無理","n","away"],["本人に聞いてみる","q","check_later"]]}},
+ check_later:{title:"本人に確認する",say:["ありがとうございます。近くを回っていますので、もし置き場所などが決まりましたら、このお電話番号に折り返していただけますか？","ただ、折り返しが間に合わない場合は、今回は持ち帰りになることがあります。"],
+  hint:"折り返しを待てるかはルート次第。待ちすぎない。",
+  opts:[["わかった","y","end_try"],["置いていいって","y","place"]]},
+
+/* ---------- 在宅確認 ---------- */
+ ask:{title:{home:"いま家にいる？",apt:"いま家にいる？",office:"受け取れる人はいる？",shop:"お店に人はいる？"},
   say:{home:["ただいまお荷物をお届けに伺ったのですが、今ご自宅にいらっしゃいますか？"],
        office:["ただいま会社の前まで伺ったのですが、どなたかに受け取っていただくことはできますか？"],
        shop:["ただいまお店の前まで伺ったのですが、どなたかいらっしゃいますか？"]},
-  hint:{home:"「ご在宅ですか？」より柔らかく伝わります。",office:"本人でなくても、受付や同僚が受け取れることが多い。",shop:"開店前・休憩中・夜営業など事情がさまざま。"},
-  opts:{home:[["いるよ","y","home_yes"],["いない","n","away"],["すぐ戻る","q","soon"]],
-        office:[["受付・他の人が受け取る","y","office_recv"],["本人が取りに行く","y","office_self"],["今日は誰もいない","n","away"],["今日は休み","n","closed"]],
-        shop:[["いるよ","y","shop_yes"],["開店前・今はいない","n","away"],["すぐ戻る","q","soon"],["夜しか開いていない","q","night"],["今日は定休日","n","closed"]]}},
+  hint:{home:"「ご在宅ですか？」より柔らかく伝わります。",apt:"オートロックの場合は、開けてもらえるかも一緒に確認。",office:"本人でなくても、受付や同僚が受け取れることが多い。",shop:"開店前・仕込み中・夜営業など事情がさまざま。"},
+  opts:{home:[["いるよ","y","home_yes"],["いない","n","away"],["すぐ戻る・今向かってる","q","soon"],["別の場所に持ってきて","q","redirect"],["何の荷物？頼んでない","q","unknown"]],
+        apt:[["いるよ","y","apt_yes"],["いない","n","away"],["すぐ戻る・今向かってる","q","soon"],["宅配ボックスに入れて","y","box"],["管理人さんに預けて","q","neighbor"],["何の荷物？頼んでない","q","unknown"]],
+        office:[["受付・他の人が受け取る","y","office_recv"],["本人が取りに行く","y","office_self"],["今日は誰もいない","n","away"],["今日は休み","n","closed"],["入館手続きが必要","q","office_gate"],["何の荷物？頼んでない","q","unknown"]],
+        shop:[["いるよ","y","shop_yes"],["開店前・今はいない","n","away"],["すぐ戻る","q","soon"],["裏口に回って","y","shop_back"],["夜しか開いていない","q","night"],["今日は定休日","n","closed"],["何の荷物？頼んでない","q","unknown"]]}},
+
+/* ---------- いた ---------- */
  home_yes:{title:"家にいた",say:["失礼しました！これからもう一度インターホンを押しますので、出ていただけますか？"],
   hint:"インターホンの故障や聞こえなかったケースが多いです。",
-  opts:[["わかった","y","end_ok"],["インターホン壊れてる","q","bell"],["今は出られない","n","cant"]]},
- office_recv:{title:"受付で受け取り",say:["ありがとうございます。受付（〇〇階）にお持ちすればよろしいですか？","受け取っていただく方のお名前を伺ってもよろしいでしょうか？"],
-  hint:"受け取った人の名前をメモ。ビルの入館ルールにも従う。",
-  opts:[["わかった","y","end_ok"],["受付はない","q","office_self"]]},
- office_self:{title:"取りに来てくれる",say:["ありがとうございます。では〇〇（入口・ロビーなど）でお待ちしていますね。"],
-  opts:[["OK","y","end_ok"]]},
- shop_yes:{title:"お店にいた",say:["失礼しました！これからお店に伺いますので、受け取っていただけますか？"],
-  opts:[["わかった","y","end_ok"],["今は手が離せない","n","cant"]]},
+  opts:[["わかった","y","end_ok"],["インターホン壊れてる","q","bell"],["今は出られない","n","cant"],["寝てた・赤ちゃんがいる","q","quiet"]]},
+ apt_yes:{title:"家にいた",say:["失礼しました！これからもう一度、部屋番号でお呼び出しします。オートロックを開けていただけますか？"],
+  hint:"部屋番号を復唱して間違いがないか確認。",
+  opts:[["わかった","y","end_ok"],["部屋番号が違う","q","wrong_room"],["インターホン壊れてる","q","bell"],["今は出られない","n","cant"],["寝てた・赤ちゃんがいる","q","quiet"]]},
+ quiet:{title:"静かにしてほしい",say:["承知しました。インターホンは鳴らさずに、ドアの前に着いたらこのお電話でお知らせしますね。"],
+  opts:[["OK","y","end_ok"],["置いといて","y","place"]]},
  bell:{title:"インターホンが鳴らない",say:["承知しました。では、ドアの前に着いたらこのお電話か、ノックでお知らせしますね。"],
+  opts:[["OK","y","end_ok"]]},
+ wrong_room:{title:"部屋番号が違う",say:["大変失礼しました。お部屋番号を伺ってもよろしいですか？","（復唱）〇〇〇号室ですね。ありがとうございます。すぐに伺います。"],
+  hint:"住所の間違いは配達後にリーダーへ報告。お客様にはAmazonの住所の修正をお願いしてもよい。",
   opts:[["OK","y","end_ok"]]},
  cant:{title:"今は出られない",
   say:{home:["承知しました。玄関の前などに置かせていただいてもよろしいですか？"],
+       apt:["承知しました。玄関の前や宅配ボックスに置かせていただいてもよろしいですか？"],
+       office:["承知しました。入口の前や受付などに置かせていただいてもよろしいですか？"],
        shop:["お忙しいところすみません。レジ横や入口の前など、置かせていただいてよい場所はありますか？"]},
-  opts:[["置いていいよ","y","place"],["置かないで","n","no_okihai"]]},
+  opts:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["◯分後なら出られる","q","soon"]]},
+
+ office_recv:{title:"受付で受け取り",say:["ありがとうございます。受付（〇〇階）にお持ちすればよろしいですか？","受け取っていただく方のお名前を伺ってもよろしいでしょうか？"],
+  hint:"受け取った人の名前をメモ。ビルの入館ルールにも従う。",
+  opts:[["わかった","y","end_ok"],["受付はない","q","office_self"],["入館手続きが必要","q","office_gate"]]},
+ office_self:{title:"取りに来てくれる",say:["ありがとうございます。では〇〇（入口・ロビーなど）でお待ちしていますね。"],
+  hint:"待つ時間はルート次第。5分以上かかりそうなら別の方法を相談。",
+  opts:[["OK","y","end_ok"],["時間がかかる","q","soon"]]},
+ office_gate:{title:"入館手続きが必要",say:["承知しました。入館の受付は〇〇（1階の防災センターなど）でよろしいですか？","手続きに時間がかかる場合は、1階まで取りに来ていただくことはできますか？"],
+  hint:"ビルのルールに従う。入れない場合は持ち帰りでも問題ない。",
+  opts:[["取りに来てくれる","y","office_self"],["手続きして上がって","y","end_ok"],["どちらも無理","n","away"]]},
+ office_gone:{title:"その人はいない",say:["承知しました。〇〇様宛てのお荷物なのですが、会社として代わりにお受け取りいただけますか？"],
+  hint:"受け取れない場合は持ち帰り。宛名違いの可能性ありとしてリーダーへ報告。",
+  opts:[["受け取る","y","office_recv"],["受け取れない","n","end_report"]]},
+ office_dept:{title:"部署が違う",say:["失礼しました。〇〇様はどちらの部署（何階）にいらっしゃいますか？"],
+  opts:[["教えてもらった","y","end_ok"],["受付で預かる","y","office_recv"],["分からない","n","office_gone"]]},
+ shop_yes:{title:"お店にいた",say:["失礼しました！これからお店に伺いますので、受け取っていただけますか？"],
+  opts:[["わかった","y","end_ok"],["裏口に回って","y","shop_back"],["今は手が離せない","n","cant"]]},
+ shop_back:{title:"裏口・別の入口",say:["承知しました。裏口はどちら側になりますか？（復唱）〇〇側の、〇〇の扉ですね。すぐに伺います。"],
+  hint:"場所をメモしてリーダーに共有すると、次の配達員も助かる。",
+  opts:[["OK","y","end_ok"]]},
+
+/* ---------- 不在系 ---------- */
  soon:{title:"すぐ戻る",say:["ありがとうございます。何分くらいで戻られそうですか？"],
   hint:"待てるかはルートと会社のルール次第。約束はしない言い方で。",
-  opts:[["数分で戻る","y","soon_short"],["しばらく戻れない","n","away"]]},
+  opts:[["数分で戻る","y","soon_short"],["30分以上かかる","n","away"],["待っててと言われた","q","wait_demand"]]},
  soon_short:{title:"数分で戻る",say:["近くを回っていますので、このあともう一度伺えるか試してみますね。","ただ、お約束はできないので、もし置いてよい場所があれば置き配にもできますが、いかがですか？"],
-  opts:[["置いていいよ","y","place"],["待ってて","q","end_try"],["置かないで","n","no_okihai"]]},
+  opts:[["置いていいよ","y","place"],["来てくれるならそれで","q","end_try"],["置かないで","n","no_okihai"]]},
+ wait_demand:{title:"待っててと言われた",say:["お待ちしたいのですが、ほかのお客様のお荷物もお届けしている途中でして、長くお待ちすることができないんです。申し訳ありません。","近くを回りながら、もう一度伺えるか試してみます。間に合わなかった場合は持ち帰りになりますので、ご了承ください。"],
+  opts:[["わかった","y","end_try"],["置いていいよ","y","place"],["怒っている","n","angry"]]},
+ away:{title:"不在だった",
+  say:{home:["承知しました。玄関の前などに置かせていただくこともできますが、いかがでしょうか？"],
+       apt:["承知しました。玄関の前や宅配ボックスに置かせていただくこともできますが、いかがでしょうか？"],
+       office:["承知しました。入口の前や郵便受け、ビルの宅配ボックスなどに置かせていただくこともできますが、いかがでしょうか？"],
+       shop:["承知しました。お店の入口の前や郵便受けなどに置かせていただくこともできますが、いかがでしょうか？"]},
+  opts:{home:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["近所・家族の家に預けて","q","neighbor"],["別の場所に持ってきて","q","redirect"],["今日中にもう一度来て","q","today"],["夜に持ってきて","q","night"],["◯時に来て","q","time"],["明日・土日にして","q","day"]],
+        apt:[["置いていいよ","y","place"],["宅配ボックスに入れて","y","box"],["置かないで","n","no_okihai"],["管理人さんに預けて","q","neighbor"],["別の場所に持ってきて","q","redirect"],["今日中にもう一度来て","q","today"],["夜に持ってきて","q","night"],["明日・土日にして","q","day"]],
+        office:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["営業時間内に持ってこい","q","bizhours"],["何回も伝えてる","n","repeat"],["隣の会社に預けて","q","neighbor"],["明日・平日にして","q","day"]],
+        shop:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["営業時間内に持ってこい","q","bizhours"],["夜しか開いていない","q","night"],["何回も伝えてる","n","repeat"],["隣のお店に預けて","q","neighbor"],["明日にして","q","day"]]}},
  closed:{title:{office:"今日は休み",shop:"今日は定休日"},
   say:{office:["本日はお休みなんですね、承知しました。","置いてよい場所があれば置き配にもできますが、いかがでしょうか？"],
        shop:["本日は定休日なんですね、承知しました。","入口の前や郵便受けなど、置いてよい場所があれば置き配にもできますが、いかがでしょうか？"]},
-  hint:"会社・お店宛ては次回も同じことが起きやすい。営業日に受け取れるよう案内する。",
-  opts:[["置いていいよ","y","place"],["置かないで","n","no_okihai"]]},
- away:{title:"不在だった",
-  say:{home:["承知しました。玄関の前や宅配ボックスなどに置かせていただくこともできますが、いかがでしょうか？"],
-       office:["承知しました。入口の前や郵便受け、ビルの宅配ボックスなどに置かせていただくこともできますが、いかがでしょうか？"],
-       shop:["承知しました。お店の入口の前や郵便受けなどに置かせていただくこともできますが、いかがでしょうか？"]},
-  opts:{home:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["夜に持ってきて","q","night"],["◯時に来て","q","time"]],
-        office:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["営業時間内に持ってこい","q","bizhours"],["何回も伝えてる","n","repeat"]],
-        shop:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["営業時間内に持ってこい","q","bizhours"],["夜しか開いていない","q","night"],["何回も伝えてる","n","repeat"]]}},
+  hint:"会社・お店宛ては次回も同じことが起きやすい。営業日・定休日をメモしてリーダーへ。",
+  opts:[["置いていいよ","y","place"],["置かないで","n","no_okihai"],["定休日に来るな","n","bizhours"]]},
+
+/* ---------- 置き配 ---------- */
  place:{title:"置き場所を確認",
-  say:{home:["ありがとうございます。どちらに置けばよろしいですか？玄関前、宅配ボックス、メーターボックスなどでも大丈夫です。"],
+  say:{home:["ありがとうございます。どちらに置けばよろしいですか？玄関前、宅配ボックス、物置の中などでも大丈夫です。"],
+       apt:["ありがとうございます。どちらに置けばよろしいですか？玄関前、宅配ボックス、メーターボックスなどでも大丈夫です。"],
        office:["ありがとうございます。どちらに置けばよろしいですか？入口の前、郵便受け、ビルの宅配ボックスなどでも大丈夫です。"],
        shop:["ありがとうございます。どちらに置けばよろしいですか？入口の前、シャッターの横、郵便受けなどでも大丈夫です。"]},
   hint:{home:"置いたら写真を撮って登録。場所は復唱して確認。",
+        apt:"オートロックの中に入れない場合は置けないこともある。写真を撮って登録。",
         office:"ビルによっては共用部に置けない場合あり。管理ルールを優先。写真を撮って登録。",
         shop:"雨に濡れない場所か、通る人の目につきにくいかも確認。写真を撮って登録。"},
-  opts:[["場所を聞いた","y","end_okihai"]]},
- no_okihai:{title:"置き配はイヤ",
+  opts:[["場所を聞いた","y","end_okihai"],["盗まれないか心配","q","okihai_worry"],["その場所に入れない（オートロック等）","n","okihai_cant"]]},
+ okihai_worry:{title:"盗まれないか心配",say:["ご心配ですよね。なるべく目立たない場所に置いて、置いた写真も撮っておきます。写真はAmazonの注文履歴から見られる場合があります。","ご不安でしたら、今回は持ち帰りにして、次回はロッカーやコンビニ受け取りにする方法もあります。"],
+  opts:[["置いていいよ","y","end_okihai"],["やっぱり持ち帰りで","p","no_okihai"]]},
+ okihai_cant:{title:"その場所に置けない",say:["申し訳ありません、〇〇（オートロックの中など）に入れないため、そちらには置けないんです。","ほかに置いてよい場所はありますか？なければ今回は持ち帰りになります。"],
+  opts:[["別の場所OK","y","end_okihai"],["オートロック開けるよ（遠隔）","y","end_okihai"],["持ち帰りで","p","no_okihai"]]},
+ box:{title:"宅配ボックス",say:["ありがとうございます。宅配ボックスに入れさせていただきますね。","入らなかった場合は、玄関前に置いてもよろしいですか？"],
+  hint:"ボックスの番号・暗証番号の扱いは会社のルールに従う。",
+  opts:[["玄関前もOK","y","end_okihai"],["ボックスがいっぱい・入らない","n","box_full"],["ボックスだけ","q","end_okihai"]]},
+ box_full:{title:"宅配ボックスがいっぱい",say:["宅配ボックスが空いていない（入らない）ようです。","玄関前など、ほかに置いてよい場所はありますか？なければ今回は持ち帰りになります。"],
+  opts:[["別の場所OK","y","place"],["持ち帰りで","p","no_okihai"]]},
+ neighbor:{title:{home:"近所に預けて",apt:"管理人に預けて",office:"隣の会社に預けて",shop:"隣のお店に預けて"},
+  say:["申し訳ありません、ご本人様以外のお宅（管理人さんなど）へのお預けは、私の判断ではできないんです。","置き配か、今回は持ち帰りにさせていただけますか？"],
+  hint:"会社のルールで可能な場合もある。分からなければ「私の判断ではできない」と伝える。",
+  opts:[["置き配で","y","place"],["持ち帰りで","p","no_okihai"],["怒っている","n","angry"]]},
+
+/* ---------- 時間・日付・場所の希望 ---------- */
+ no_okihai:{title:"持ち帰り（置き配NG）",
   say:{home:["承知しました。では今回は持ち帰らせていただきます。","次のお届けは、Amazonの注文履歴から日にちを選んでいただけます。","時間を気にせず受け取りたい場合は、ロッカーやコンビニ受け取りも便利ですよ。"],
        office:["承知しました。では今回は持ち帰らせていただきます。","次のお届けは、Amazonの注文履歴から、会社にいらっしゃる日を選んでいただけます。","会社で受け取りにくい場合は、ご自宅宛てやロッカー受け取りに変えていただく方法もあります。"],
        shop:["承知しました。では今回は持ち帰らせていただきます。","次のお届けは、Amazonの注文履歴から、お店が開いている日を選んでいただけます。","お店で受け取りにくい場合は、ご自宅宛てやロッカー受け取りに変えていただく方法もあります。"]},
-  opts:{home:[["わかった","y","end_back"],["夜に持ってきて","q","night"],["怒っている","n","angry"]],
-        office:[["わかった","y","end_back"],["営業時間内に持ってこい","q","bizhours"],["何回も伝えてる","n","repeat"],["サポートってどこ？","q","cs_where"],["怒っている","n","angry"]],
-        shop:[["わかった","y","end_back"],["営業時間内に持ってこい","q","bizhours"],["何回も伝えてる","n","repeat"],["サポートってどこ？","q","cs_where"],["怒っている","n","angry"]]}},
- night:{title:{home:"夜に持ってきて",office:"夜に持ってきて",shop:"夜しか開いていない"},
+  opts:{home:[["わかった","y","end_back"],["やり方がわからない","q","howto"],["夜に持ってきて","q","night"],["今日中にもう一度","q","today"],["怒っている","n","angry"]],
+        office:[["わかった","y","end_back"],["やり方がわからない","q","howto"],["営業時間内に持ってこい","q","bizhours"],["何回も伝えてる","n","repeat"],["サポートってどこ？","q","cs_where"]],
+        shop:[["わかった","y","end_back"],["やり方がわからない","q","howto"],["営業時間内に持ってこい","q","bizhours"],["何回も伝えてる","n","repeat"],["サポートってどこ？","q","cs_where"]]}},
+ howto:{title:"再配達のやり方",say:["Amazonのアプリかサイトの「注文履歴」から、このお荷物を選んでください。","「配送状況を確認」のところから、次のお届け日を選んでいただけます。","分かりにくい場合は、アプリの「カスタマーサービス」から電話をリクエストすると、折り返しで案内してもらえます。"],
+  hint:"ゆっくり、ひとつずつ。画面の名前は変わることがあるので「注文履歴」だけ確実に伝える。",
+  opts:[["わかった","y","end_back"],["やっぱり置いていいよ","y","place"]]},
+ night:{title:{home:"夜に持ってきて",apt:"夜に持ってきて",office:"夜に持ってきて",shop:"夜しか開いていない"},
   say:{home:["夜しかいらっしゃらないんですね、承知しました。","申し訳ないのですが、今Amazonの仕組みで夜の時間指定自体がなくなってしまっていて、私の方でも時間を選べないんです。","置き配か、ロッカー・コンビニ受け取りにしていただくと、確実にお受け取りいただけます。"],
        office:["夜しかいらっしゃらないんですね、承知しました。","申し訳ないのですが、今Amazonの仕組みで夜の時間指定自体がなくなってしまっていて、私の方でも時間を選べないんです。","置き配か、ご自宅宛て・ロッカー受け取りに変えていただくと、確実にお受け取りいただけます。"],
        shop:["夜の営業なんですね、承知しました。","申し訳ないのですが、今Amazonの仕組みで夜の時間指定自体がなくなってしまっていて、私の方でも時間を選べないんです。","お店の前や郵便受けへの置き配か、ご自宅宛て・ロッカー受け取りに変えていただくと、確実にお受け取りいただけます。"]},
   hint:"「できかねます」で終わらせず、代わりの方法で締める。",
-  opts:[["置き配にする","y","place"],["今回は持ち帰りで","p","end_back"],["何回も伝えてる","n","repeat"],["納得していない","n","angry"]]},
+  opts:[["置き配にする","y","place"],["今回は持ち帰りで","p","end_back"],["前は夜に来てた","q","before_ok"],["何回も伝えてる","n","repeat"],["納得していない","n","angry"]]},
  time:{title:"◯時に来て",say:["◯時ごろですね、承知しました。","申し訳ありません、今は私の方で時間のお約束ができない仕組みになっています。","時間を気にせず受け取るなら、置き配が一番確実です。"],
-  opts:[["置き配にする","y","place"],["今回は持ち帰りで","p","end_back"],["納得していない","n","angry"]]},
- angry:{title:"怒っている",say:["ご不便をおかけして、本当に申し訳ありません。","お気持ちはよく分かります。私の方でできることが限られていて、もどかしい思いをさせてしまっています。","ご意見は、Amazonアプリの「カスタマーサービス」からお伝えいただくと、改善につながります。"],
-  hint:"言い返さない。長引く・脅される場合は無理せずリーダーに連絡。",
-  opts:[["落ち着いた","y","away"],["何回も伝えてる","n","repeat"],["サポートってどこ？","q","cs_where"],["持ち帰りでいい","p","end_back"]]},
+  opts:[["置き配にする","y","place"],["今回は持ち帰りで","p","end_back"],["前は時間指定できた","q","before_ok"],["納得していない","n","angry"]]},
+ today:{title:"今日中にもう一度",say:["お急ぎなんですね、ご不便をおかけしてすみません。","申し訳ないのですが、今日のルートの都合で、この後もう一度伺えるお約束ができないんです。","置き配にしていただけましたら、このあと伺えるか試してみます。"],
+  hint:"当日の再配達は基本できない前提で話す。近くにいて戻れる場合だけ「試してみます」。",
+  opts:[["置き配にする","y","place"],["明日でいい","y","day"],["急いでるのに！","n","angry"]]},
+ day:{title:{home:"明日・土日にして",apt:"明日・土日にして",office:"明日・平日にして",shop:"明日にして"},
+  say:["承知しました。今回は持ち帰らせていただきます。","次のお届け日は、Amazonの注文履歴からご都合のよい日を選んでいただけます。","選ばなかった場合も、次の日以降にもう一度お届けに伺うことが多いです。"],
+  hint:"何日に来るかは約束しない。選び方は「注文履歴」。",
+  opts:[["わかった","y","end_back"],["やり方がわからない","q","howto"]]},
+ before_ok:{title:"前はできたのに",say:["おっしゃる通り、以前は時間を選べたんです。","最近Amazonの方で仕組みが変わってしまって、今は時間のお約束ができなくなっています。ご不便をおかけして申し訳ありません。","ご意見は、Amazonアプリの「カスタマーサービス」からお伝えいただけます。"],
+  opts:[["置き配にする","y","place"],["わかった","y","end_back"],["サポートってどこ？","q","cs_where"]]},
+ redirect:{title:"別の場所に持ってきて",say:["申し訳ありません、配達中の住所の変更は、私の方ではできない決まりになっています。","今回は持ち帰りにさせていただいて、受け取り場所の変更は、Amazonのカスタマーサービスにご相談いただけますか？","次回からは、ロッカーやコンビニ受け取りにしていただくと便利です。"],
+  hint:"勝手に別の住所へ持っていかない（誤配・紛失のもと）。",
+  opts:[["わかった","y","end_back"],["置き配でいい","y","place"],["サポートってどこ？","q","cs_where"]]},
+
+/* ---------- 営業時間・繰り返し・サポート ---------- */
+ bizhours:{title:"営業時間内に来い",
+  say:["営業時間内にお受け取りになりたいんですね、承知しました。","私からも会社に、営業時間を報告しておきます。","ただ、今はAmazonの仕組みで時間のお約束ができないので、Amazonのアドレス帳の「配達指示」に営業時間や定休日を書いていただくのが一番確実です。","すぐに受け取りたい場合は、置き配か、ロッカー受け取りもご利用いただけます。"],
+  hint:"「必ず◯時に」とは約束しない。営業時間・定休日はメモしてリーダーへ。",
+  opts:[["置き配にする","y","place"],["わかった","y","end_report"],["配達指示ってどこ？","q","instr_where"],["サポートってどこ？","q","cs_where"],["納得していない","n","escalate"]]},
+ repeat:{title:"何回も伝えてる",
+  say:["何度もお伝えいただいていたのに、本当に申し訳ありません。","配達員はその日ごとに変わることがあって、口頭でのお話が次の担当まで届かないことがあるんです。","私からも会社に、このお届け先のことを報告しておきます。","確実に伝わるように、Amazonのアドレス帳の「配達指示」に、営業時間や置き場所を書いておいていただけると、配達員に表示されます。"],
+  hint:"「報告しておきます」と言ったら、配達後に必ずリーダーに住所と内容を報告する。",
+  opts:[["わかった","y","end_report"],["配達指示ってどこ？","q","instr_where"],["営業時間内に持ってこい","q","bizhours"],["サポートってどこ？","q","cs_where"],["納得していない","n","escalate"]]},
+ instr_where:{title:"配達指示ってどこ？",say:["Amazonのアプリで、右下の人のマーク（アカウント）から「アドレス帳」または「お届け先住所」を開いてください。","この住所の「編集」の中に「配達指示」の欄があります。そこに、営業時間や定休日、置き場所を書いていただけます。"],
+  hint:"画面の名前や場所はアプリの更新で変わることがある。分からなければカスタマーサービスへ。",
+  opts:[["わかった","y","end_report"],["わからない","q","cs_where"]]},
  cs_where:{title:"サポートってどこ？",
   say:["分かりにくくてすみません。Amazonのアプリかサイトの、いちばん下の「カスタマーサービス」から連絡できます。","「お電話をリクエスト」を選ぶと、Amazonの方から折り返しお電話が来ますので、そちらが一番早いです。"],
   hint:"電話番号を聞かれたら「アプリから電話をリクエストすると折り返しが来ます」と伝えるのが確実（番号は変わることがある）。",
-  opts:[["わかった","y","end_back"],["それでも納得しない","n","escalate"]]},
- repeat:{title:"何回も伝えてる",
-  say:["何度もお伝えいただいていたのに、本当に申し訳ありません。","配達員はその日ごとに変わることがあって、口頭でのお話が次の担当まで届かないことがあるんです。","私からも会社に、このお届け先のことを報告しておきます。","確実に伝わるように、Amazonのアドレス帳の「配達指示」に、営業時間や置き場所を書いておいていただけると、配達員全員に表示されます。"],
-  hint:"「報告しておきます」と言ったら、配達後に必ずリーダーに住所と内容を報告する。",
-  opts:[["わかった","y","end_report"],["営業時間内に持ってこい","q","bizhours"],["サポートってどこ？","q","cs_where"]]},
- bizhours:{title:"営業時間内に来い",
-  say:["営業時間内にお受け取りになりたいんですね、承知しました。","私からも会社に、営業時間を報告しておきます。","ただ、今はAmazonの仕組みで時間のお約束ができないので、Amazonのアドレス帳の「配達指示」に営業時間を書いていただくのが一番確実です。","すぐに受け取りたい場合は、置き配か、ロッカー受け取りもご利用いただけます。"],
-  hint:"「必ず◯時に」とは約束しない。営業時間はメモしてリーダーへ。",
-  opts:[["置き配にする","y","place"],["わかった","y","end_report"],["サポートってどこ？","q","cs_where"],["納得していない","n","escalate"]]},
+  opts:[["わかった","y","end_back"],["電話番号を教えろ","q","cs_number"],["それでも納得しない","n","escalate"]]},
+ cs_number:{title:"電話番号を教えろ",say:["申し訳ありません、私の方で確実な番号をお伝えできないんです。","アプリの「カスタマーサービス」から電話をリクエストしていただくと、確実にAmazonにつながります。"],
+  hint:"よく知られた番号はあるが変わることがある。間違った番号を伝えるより、アプリ経由を案内する方が安全。",
+  opts:[["わかった","y","end_back"],["納得しない","n","escalate"]]},
+
+/* ---------- 苦情・トラブル ---------- */
+ angry:{title:"怒っている",say:["ご不便をおかけして、本当に申し訳ありません。","お気持ちはよく分かります。私の方でできることが限られていて、もどかしい思いをさせてしまっています。","ご意見は、Amazonアプリの「カスタマーサービス」からお伝えいただくと、改善につながります。"],
+  hint:"言い返さない。説明を繰り返さない。長引く・脅される場合は無理せずリーダーへ。",
+  opts:[["落ち着いた","y","away"],["何回も伝えてる","n","repeat"],["名前を教えろ","q","name"],["上司を出せ・会社はどこ","n","boss"],["サポートってどこ？","q","cs_where"],["持ち帰りでいい","p","end_back"]]},
+ why_call:{title:"なんで電話するの",say:["お忙しいところ申し訳ありません。ご不在だったので、受け取り方を確認したくてお電話しました。","置き配がよろしければ、今後はお電話なしで置かせていただけるよう、Amazonの配達指示に書いておいていただくと確実です。"],
+  opts:[["置いていいよ","y","place"],["持ち帰りで","p","end_back"]]},
+ name:{title:"名前を教えろ",say:["配達を担当しております、〇〇（会社で決まっている名乗り方）と申します。","ご意見は会社にもお伝えいたします。"],
+  hint:"フルネームを言う必要はない。会社のルールの範囲で。",
+  opts:[["わかった","y","end_report"],["上司を出せ","n","boss"]]},
+ boss:{title:"上司を出せ",say:["申し訳ありません、今は配達中のため、この場で上の者におつなぎすることができないんです。","いただいたご意見は、必ず会社に報告いたします。","Amazonへのご意見は、アプリの「カスタマーサービス」からお伝えいただけます。"],
+  hint:"所属会社の電話番号を教えてよいかは会社のルール次第。分からなければ教えない。",
+  opts:[["わかった","y","end_report"],["収まらない","n","escalate"]]},
  escalate:{title:"収まらない",
   say:["ご不便をおかけして本当に申し訳ありません。","私の判断ではお約束ができないので、会社の担当者に伝えて、改めてご連絡できるか確認させてください。"],
   hint:"無理に説得しない。住所・お名前・言われた内容をメモして、すぐリーダーへ。暴言や脅しがあれば電話を切ってよい。",
+  opts:[["わかった","y","end_report"],["暴言・脅しがある","n","abuse"]]},
+ abuse:{title:"暴言・脅し",say:["申し訳ありませんが、このままではお話を続けることができませんので、お電話を失礼いたします。"],
+  hint:"切ってOK。荷物は持ち帰り。すぐにリーダーへ報告。身の危険を感じたら近づかない。",end:true},
+
+/* ---------- その他 ---------- */
+ unknown:{title:"何の荷物？頼んでない",say:["Amazonでご注文いただいたお荷物で、宛名は〇〇様になっています。","中身は私の方では分からないのですが、Amazonの注文履歴で確認していただけます。ご家族の方のご注文やプレゼントの場合もあります。"],
+  hint:"中身は答えない（分からない）。宛名・住所が合っているかだけ確認。",
+  opts:[["家族のだった","y","away"],["受け取りたくない","n","refuse"],["宛名が違う","n","wrong_addr"],["確認してから","q","check_later"]]},
+ refuse:{title:"受け取りたくない",say:["承知しました。お受け取りいただかない場合は、お荷物はAmazonに戻ります。","返金などについては、Amazonのカスタマーサービスでご確認いただけますか？"],
+  hint:"受け取り拒否の扱いは会社の端末の手順に従う。",
   opts:[["わかった","y","end_report"]]},
- end_report:{title:"報告して終了",say:["ありがとうございます。会社にもしっかり伝えておきます。失礼いたします。"],
-  hint:"配達後：住所／お店の名前／営業時間／言われたこと をリーダーに報告。",end:true},
- wrong:{title:"番号違い",say:["大変失礼いたしました。お手数をおかけしました。失礼いたします。"],end:true},
+ wrong_addr:{title:"宛名・住所が違う",say:["大変失礼いたしました。確認のため、お名前とご住所を伺ってもよろしいですか？","こちらで確認して、正しいお届け先にお届けできるようにします。"],
+  hint:"勝手に別の住所に届けない。持ち帰ってリーダーへ報告。",
+  opts:[["わかった","y","end_report"]]},
+ scam:{title:"詐欺？と疑われた",say:["ご不安にさせてすみません。Amazonのお荷物の配達の者です。","お金や個人情報をお伺いすることはありません。お荷物の受け取り方だけ確認させてください。","ご心配でしたら、Amazonの注文履歴で配送状況をご確認いただけます。"],
+  hint:"お金・カード・暗証番号の話は絶対にしない。",
+  opts:[["わかった","y","ask"],["信用できない","n","end_back"]]},
+ slow:{title:"聞き取れない・ご高齢",say:["（ゆっくり、はっきり）アマゾンの、お荷物です。","いま、おうちに、いらっしゃいますか？","（いない場合）では、また、お届けに、きます。"],
+  hint:"短く区切って、大きめの声で。難しい案内（アプリ操作など）はしない。",
+  opts:[["いる","y","home_yes"],["いない","n","end_back"]]},
+ english:{title:"外国語の人",say:["Hello, this is Amazon delivery.（ハロー、ディス イズ アマゾン デリバリー）","Are you at home now?（アー ユー アット ホーム ナウ？）","Can I leave it at your door?（キャナイ リーブ イット アット ユア ドア？）","OK, I will take it back.（オーケー、アイル テイク イット バック）","Please choose a new date in the Amazon app.（プリーズ チューズ ア ニュー デイト イン ジ アマゾン アップ）"],
+  hint:"YES なら置き配、NO なら持ち帰り。通じなければ無理せず持ち帰り。",
+  opts:[["YES（置いていい）","y","end_okihai"],["NO（置かないで）","n","end_back"],["I'm home（いる）","y","end_ok"]]},
+ hangup:{title:"話し中・切られた",say:["（もう一度だけかけ直す。出なければ留守電を残す）"],
+  hint:"何回もかけ直さない。1〜2回で持ち帰りへ。",
+  opts:[["つながった","y","ask"],["留守電になった","m","vm"]]},
+
+/* ---------- お客様からの折り返し ---------- */
+ incoming:{title:"お客様からの電話",say:["はい、Amazonのお荷物の配達の者です。お電話ありがとうございます。","恐れ入りますが、お名前（会社名・店名）とご住所を伺ってもよろしいですか？"],
+  hint:"まずどの荷物の話か確認。配達中なら安全な場所に止まってから話す。",
+  opts:[["今なら家にいる・受け取れる","y","home_yes"],["置いておいて","y","place"],["もう一度来て","q","today"],["届いてない・置き配が見つからない","n","not_found"],["荷物が壊れてた・違う物","n","damaged"],["文句を言いたい","n","angry"]]},
+ not_found:{title:"荷物が見つからない",say:["ご心配をおかけして申し訳ありません。置いた場所は〇〇（覚えていれば）です。","置き配の場合は、置いた写真がAmazonの注文履歴で見られる場合があります。","それでも見つからない場合は、Amazonのカスタマーサービスにご連絡いただけますか？"],
+  hint:"覚えていない場合は無理に答えない。リーダーにも報告。",
+  opts:[["見つかった","y","end_ok"],["サポートってどこ？","q","cs_where"],["怒っている","n","angry"]]},
+ damaged:{title:"壊れてた・違う物",say:["ご迷惑をおかけして申し訳ありません。","交換や返金については、Amazonのカスタマーサービスでご対応いただけます。アプリの注文履歴から手続きできます。"],
+  hint:"配達員がその場で返品・交換を受けない。リーダーに報告。",
+  opts:[["わかった","y","end_report"],["サポートってどこ？","q","cs_where"]]},
+
+ wrong:{title:"番号違い",say:["大変失礼いたしました。お手数をおかけしました。失礼いたします。"],hint:"番号違いはリーダーに報告。",end:true},
  vm:{title:"留守電",
   say:{home:["Amazonのお荷物の配達です。","ただいまお届けに伺いましたが、ご不在でしたので持ち帰ります。","次回のお届けは、Amazonの注文履歴から日にちを選んでいただけます。失礼いたします。"],
        office:["Amazonのお荷物の配達です。〇〇様宛てのお荷物をお届けに伺いましたが、お受け取りいただけなかったため持ち帰ります。","次回のお届けは、Amazonの注文履歴から日にちを選んでいただけます。失礼いたします。"],
@@ -189,44 +333,68 @@ const N={
   hint:"15秒以内・ゆっくり。",end:true},
  end_ok:{title:"お届けへ",say:["ありがとうございます。すぐに伺います。失礼いたします。"],end:true},
  end_try:{title:"もう一度伺う",say:["承知しました。もう一度伺えるよう回ってみます。伺えなかった場合は持ち帰りになりますので、ご了承ください。失礼いたします。"],end:true},
- end_okihai:{title:"置き配で完了",say:["〇〇に置かせていただきますね。ありがとうございました。失礼いたします。"],end:true},
- end_back:{title:"持ち帰り",say:["ご協力ありがとうございます。今回は持ち帰らせていただきます。失礼いたします。"],end:true}
+ end_okihai:{title:"置き配で完了",say:["〇〇に置かせていただきますね。ありがとうございました。失礼いたします。"],hint:"置いたら写真を撮って登録。",end:true},
+ end_back:{title:"持ち帰り",say:["ご協力ありがとうございます。今回は持ち帰らせていただきます。失礼いたします。"],end:true},
+ end_report:{title:"報告して終了",say:["ありがとうございます。会社にもしっかり伝えておきます。失礼いたします。"],
+  hint:"配達後：住所／名前（店名・会社名）／営業時間・定休日／言われたこと をリーダーに報告。",end:true}
 };
-let stack=[{id:"start"}], kind=null, fs=1.12;
+/* どの画面からでも出せる「ほかの返事」 */
+const EXTRA=[["怒っている","n","angry"],["何回も伝えてる","n","repeat"],["サポートってどこ？","q","cs_where"],["なんで電話するの","q","why_call"],["何の荷物？頼んでない","q","unknown"],["詐欺？と疑われた","q","scam"],["聞き取れない・ご高齢","m","slow"],["外国語の人","m","english"],["名前を教えろ","q","name"],["上司を出せ","n","boss"]];
+
+let stack=[{id:"start"}], kind=null, fs=1.12, q="";
 try{const v=localStorage.getItem("flow_fs");if(v)fs=+v}catch(e){}
 const app=document.getElementById("app");
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
-function pick(v){if(v==null)return null;if(Array.isArray(v)||typeof v==="string")return v;return v[kind]||v.home||v.shop||v.office}
+function pick(v,k){k=k||kind;if(v==null)return null;if(Array.isArray(v)||typeof v==="string")return v;return v[k]||(k==="apt"&&v.home)||v.home||v.apt||v.shop||v.office}
+function rows(list,attr){return '<div class="list">'+list.map((o,i)=>'<button class="row" type="button" '+attr+'="'+i+'"><span class="ic" style="background:'+C[o[1]][0]+'">'+C[o[1]][1]+'</span><span class="t"><span class="tx">'+esc(o[0])+(o[4]?'<small>'+esc(o[4])+'</small>':'')+'</span><span class="chev">›</span></span></button>').join("")+'</div>'}
+function go(o){stack.push(o[3]?{id:o[2],kind:o[3]}:{id:o[2]});q="";render();window.scrollTo(0,0)}
+function searchList(){
+  const k=kind||"home", out=[], t=q.trim();
+  for(const id in N){if(id==="start")continue;const n=N[id];const title=pick(n.title,k)||"";const say=(pick(n.say,k)||[]).join(" ");
+    if(title.includes(t)||say.includes(t))out.push([title,n.end?"p":"q",id,null,say.slice(0,34)+(say.length>34?"…":"")])}
+  return out.slice(0,30);
+}
 function render(){
   const top=stack[stack.length-1]; kind=null;
   for(const s of stack){if(s.kind)kind=s.kind}
   const n=N[top.id], say=pick(n.say), hint=pick(n.hint), opts=pick(n.opts), title=pick(n.title);
   document.documentElement.style.setProperty("--fs",fs+"rem");
-  document.getElementById("navt").innerHTML='配達電話'+(kind?'<span class="chip" style="background:'+C[kind][0]+'">'+KIND[kind]+'</span>':'');
+  document.getElementById("navt").innerHTML='配達電話'+(kind&&top.id!=="start"?'<span class="chip" style="background:'+C[kind][0]+'">'+KIND[kind]+'</span>':'');
   let h='<div><h1 class="lt">'+esc(title)+'</h1>';
-  if(stack.length>1)h+='<div class="crumb">'+stack.slice(1,-1).map(s=>esc(pick(N[s.id].title))).join(" › ")+'</div>';
+  if(stack.length>2)h+='<div class="crumb">'+stack.slice(1,-1).map(s=>esc(pick(N[s.id].title))).join(" › ")+'</div>';
   h+='</div>';
-  if(say)h+='<div><p class="sec-h">あなたが言う</p><div class="bubble'+(n.end?" end":"")+'">'+say.map(s=>"<p>"+esc(s)+"</p>").join("")+'</div></div>';
-  if(hint)h+='<div class="hint"><b>ポイント</b><span>'+esc(hint)+'</span></div>';
-  if(opts){
-    h+='<div><p class="sec-h">'+(top.id==="start"?"配達先":"お客様の返事")+'</p><div class="list">'+opts.map((o,i)=>'<button class="row" type="button" data-i="'+i+'"><span class="ic" style="background:'+C[o[1]][0]+'">'+C[o[1]][1]+'</span><span class="t"><span class="tx">'+esc(o[0])+'</span><span class="chev">›</span></span></button>').join("")+'</div></div>';
+  if(top.id==="start")h+='<div class="search"><input id="q" type="search" placeholder="セリフを検索（例：営業時間、置き配）" value="'+esc(q)+'" autocomplete="off"></div>';
+  if(top.id==="start"&&q.trim()){
+    const r=searchList(); h+='<div><p class="sec-h">検索結果 '+r.length+'件</p>'+(r.length?rows(r,"data-s"):'<div class="hint"><span>見つかりませんでした。別の言葉で探してみてください。</span></div>')+'</div>';
   }else{
-    h+='<div class="list"><button class="row" type="button" id="again"><span class="ic" style="background:var(--tint)">↺</span><span class="t"><span class="tx">次の電話へ（最初から）</span><span class="chev">›</span></span></button></div>';
+    if(say)h+='<div><p class="sec-h">あなたが言う</p><div class="bubble'+(n.end?" end":"")+'">'+say.map(s=>"<p>"+esc(s)+"</p>").join("")+'</div></div>';
+    if(hint)h+='<div class="hint"><b>ポイント</b><span>'+esc(hint)+'</span></div>';
+    if(opts){h+='<div><p class="sec-h">'+(top.id==="start"?"配達先":"お客様の返事")+'</p>'+rows(opts,"data-i")+'</div>';}
+    else{h+='<div class="list"><button class="row" type="button" id="again"><span class="ic" style="background:var(--tint)">↺</span><span class="t"><span class="tx">次の電話へ（最初から）</span><span class="chev">›</span></span></button></div>';}
+    if(top.id!=="start"&&!n.end){
+      const ex=EXTRA.filter(e=>e[2]!==top.id&&!(opts||[]).some(o=>o[2]===e[2]));
+      h+='<details class="more"><summary>ほかの返事（困ったとき）</summary>'+rows(ex,"data-x")+'</details>';
+    }
   }
   h+='<div class="seg" role="group" aria-label="文字サイズ"><button type="button" data-f="1" aria-pressed="'+(fs<1.1)+'">小</button><button type="button" data-f="1.12" aria-pressed="'+(fs>=1.1&&fs<1.3)+'">標準</button><button type="button" data-f="1.35" aria-pressed="'+(fs>=1.3)+'">大</button></div>';
-  h+='<p class="foot">※Amazonの配達ルール（時間指定・再配達・置き配）は変わることがあります。所属の配送会社やビルのルールが優先です。2026年10月時点。</p>';
+  h+='<p class="foot">※Amazonの配達ルール（時間指定・再配達・置き配）やアプリの画面は変わることがあります。所属の配送会社やビルのルールが優先です。2026年10月時点。</p>';
   app.innerHTML=h;
   app.classList.remove("page");void app.offsetWidth;app.classList.add("page");
-  app.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>{const o=opts[+b.dataset.i];stack.push(o[3]?{id:o[2],kind:o[3]}:{id:o[2]});render();window.scrollTo(0,0)});
+  app.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>go(opts[+b.dataset.i]));
+  app.querySelectorAll("[data-x]").forEach(b=>{const ex=EXTRA.filter(e=>e[2]!==top.id&&!(opts||[]).some(o=>o[2]===e[2]));b.onclick=()=>go(ex[+b.dataset.x])});
+  if(top.id==="start"&&q.trim()){const r=searchList();app.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{stack.push({id:r[+b.dataset.s][2],kind:"home"});q="";render();window.scrollTo(0,0)})}
+  const qi=document.getElementById("q");
+  if(qi){qi.oninput=()=>{q=qi.value;const pos=qi.selectionStart;render();const n2=document.getElementById("q");n2.focus();try{n2.setSelectionRange(pos,pos)}catch(e){}}}
   const a=document.getElementById("again");if(a)a.onclick=reset;
   app.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{fs=+b.dataset.f;try{localStorage.setItem("flow_fs",fs)}catch(e){}render()});
   document.getElementById("back").disabled=stack.length<2;
 }
-function reset(){stack=[{id:"start"}];render();window.scrollTo(0,0)}
+function reset(){stack=[{id:"start"}];q="";render();window.scrollTo(0,0)}
 document.getElementById("back").onclick=()=>{if(stack.length>1){stack.pop();render();window.scrollTo(0,0)}};
 document.getElementById("home").onclick=reset;
 render();
 </script>
+
 <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}</script>
 </body>
 </html>
