@@ -1,5 +1,5 @@
 // 電波があるときは最新版、圏外のときは保存しておいた画面を出す
-const CACHE = 'denwa-v3';
+const CACHE = 'denwa-v4';
 const FILES = ['./', './index.html', './manifest.webmanifest', './apple-touch-icon.png', './icon-192.png'];
 self.addEventListener('install', (e) => {
   self.skipWaiting();
